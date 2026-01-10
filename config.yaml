@@ -1,0 +1,13 @@
+# Local Verilog Agent Configuration
+
+# Ollama Model Settings
+model: "gpt-oss:20b"
+
+# Simulation Settings
+max_retries: 5
+workspace_dir: "build"
+
+# Output Settings
+designs_dir: "designs"
+save_on_success: true
+show_diffs: true

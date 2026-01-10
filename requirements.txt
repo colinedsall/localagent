@@ -1,0 +1,4 @@
+ollama
+rich
+typer
+pyyaml
