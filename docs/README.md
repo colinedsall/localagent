@@ -36,6 +36,10 @@ python src/main.py "Your Prompt" [OPTIONS]
 The agent is pre-configured via `config.yaml`. You can modify this file to change default behaviors.
 
 ```yaml
+# Core Settings
+prompt: "A 4-bit synchronous counter" # Optional: Define prompt here to run without CLI args
+instructions: "Use Verilog-2001 standard. All modules must have a 'valid' output signal." # Global style/constraint instructions
+
 # Ollama Model Settings
 model: "gpt-oss:20b"  # Default model to use
 

@@ -3,7 +3,7 @@ import re
 from typing import Optional, Dict
 
 class VerilogAgent:
-    def __init__(self, model_name: str = "qwen2.5-coder:14b"):
+    def __init__(self, model_name: str = "qwen2.5-coder:14b", extra_instructions: str = ""):
         self.model_name = model_name
         self.system_prompt = (
             "You are acting as an expert Computer Hardware Engineer specializing in Verilog (hardware description language)."
@@ -16,6 +16,8 @@ class VerilogAgent:
             "5. Do NOT output markdown backticks (```verilog) if possible, or ensure they are easily parseable.\n"
             "6. Output ONLY the code when requested."
         )
+        if extra_instructions:
+            self.system_prompt += f"\n\nADDITIONAL INSTRUCTIONS:\n{extra_instructions}"
 
     def _clean_response(self, text: str) -> str:
         """Extracts code from markdown blocks if present."""
@@ -51,7 +53,9 @@ class VerilogAgent:
             "2. Generate a clock (if sequential).\n"
             "3. Apply test vectors covering corner cases.\n"
             "4. Use `$display` and `$error` to report pass/fail.\n"
-            "5. End simulation with `$finish`.\n\n"
+            "5. End simulation with `$finish`.\n"
+            "6. DO NOT include the design module code in your response. Only the testbench.\n"
+            "7. The testbench module name must be `tb_<module_name>` or similar.\n\n"
             f"--- Design Under Test ---\n{original_verilog}"
         )
 
@@ -67,7 +71,13 @@ class VerilogAgent:
         file_type = "testbench" if is_testbench else "module"
         fix_prompt = (
             f"The following Verilog {file_type} produced compilation errors.\n"
-            "Please fix the code. Return ONLY the full corrected code.\n\n"
+            "Please fix the code. Return ONLY the full corrected code.\n"
+        )
+        
+        if is_testbench:
+            fix_prompt += "DO NOT include the design module code. Output ONLY the testbench module.\n"
+
+        fix_prompt += (
             f"--- Error Log ---\n{error_log}\n\n"
             f"--- Original Code ---\n{original_code}"
         )
