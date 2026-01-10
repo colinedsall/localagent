@@ -1,7 +1,7 @@
-# Local Verilog Agent - User Guide
+# Local Verilog Agent
 
 ## Overview
-The Local Verilog Agent is an AI-powered tool that generates, simulates, and validates Verilog hardware designs using your local Ollama LLM and Icarus Verilog.
+The Local Verilog Agent is an LLM-powered tool that generates, simulates, and validates Verilog hardware designs using your local Ollama LLM and Icarus Verilog installation.
 
 ## Setup
 1.  **Prerequisites**:
@@ -54,6 +54,6 @@ show_diffs: true       # Show colorized diffs when the agent fixes code
 ```
 
 ## Prompting Tips
-*   **Be Specific**: "A counter" is vague. "A 4-bit synchronous up-counter with active-high reset and enable" is better.
+*   **Be Specific**: "A counter" is vague. "A 4-bit synchronous up-counter with active-high reset and enable" is better. The LLM model will infer the rest, which requires more context. Generally, within the context window of your model, the more specific you are, the better. Using GPT-OSS:20b, most specifications less than 800 words worked perfectly fine over about 3 attemptss.
 *   **Specify Interface**: If you need specific signal names, list them (e.g., "Inputs: clk, rst, in_a; Output: out_b").
 *   **Reset Logic**: Explicitly state "synchronous" or "asynchronous" and "active-high" or "active-low" to ensure the generated testbench matches the design.
