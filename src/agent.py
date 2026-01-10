@@ -57,8 +57,7 @@ class VerilogAgent:
             "4. Use `$display` and `$error` to report pass/fail.\n"
             "5. End simulation with `$finish`.\n"
             "6. DO NOT include the design module code in your response. Only the testbench.\n"
-            "7. If no timescale directive guidance is given, use 1ns/1ps.\n"
-            "8. The testbench module name must be `tb_<module_name>` or similar.\n\n"
+            "7. The testbench module name must be `tb_<module_name>` or similar.\n\n"
             f"--- Design Under Test ---\n{original_verilog}"
         )
 
