@@ -1,5 +1,8 @@
 # Local Verilog Agent Configuration
 
+# Core Settings
+# prompt: "A 4-bit synchronous counter" # Optional: Define prompt here to run without CLI args
+
 # Ollama Model Settings
 model: "gpt-oss:20b"
 

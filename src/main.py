@@ -51,7 +51,7 @@ def show_diff(old_code: str, new_code: str, title: str = "Code Changes"):
 
 @app.command()
 def design(
-    prompt: str = typer.Argument(..., help="Description of the hardware module to build"),
+    prompt: str = typer.Argument(None, help="Description of the hardware module to build"),
     model: str = typer.Option(None, help="Ollama model to use (overrides config)"),
     max_retries: int = typer.Option(None, help="Maximum self-correction attempts (overrides config)"),
     config_file: str = typer.Option("config.yaml", help="Path to configuration file")
@@ -62,7 +62,16 @@ def design(
     # 1. Load Config
     config = load_config(config_file)
     
-    # 2. Override defaults with CLI args or Config
+    # 2. Determine Prompt
+    # CLI arg > Config > Error
+    active_prompt = prompt or config.get("prompt")
+    
+    if not active_prompt:
+        console.print("[bold red]Error: No prompt provided.[/bold red]")
+        console.print("Please provide a prompt via CLI argument or 'prompt' field in config.yaml")
+        raise typer.Exit(code=1)
+
+    # 3. Override defaults with CLI args or Config
     model_name = model or config.get("model", "qwen2.5-coder:14b")
     retries = max_retries if max_retries is not None else config.get("max_retries", 5)
     designs_dir = config.get("designs_dir", "designs")
@@ -71,11 +80,11 @@ def design(
     agent = VerilogAgent(model_name=model_name)
     sim = VerilogSimulator(work_dir=config.get("workspace_dir", "build"))
     
-    console.print(Panel(f"[bold blue]Goal:[/bold blue] {prompt}\n[dim]Model: {model_name}[/dim]", title="Verilog Agent"))
+    console.print(Panel(f"[bold blue]Goal:[/bold blue] {active_prompt}\n[dim]Model: {model_name}[/dim]", title="Verilog Agent"))
 
-    # 3. Generate Design
+    # 4. Generate Design
     with console.status("[bold green]Generating Verilog Design...[/bold green]"):
-        design_code = agent.generate_design(prompt)
+        design_code = agent.generate_design(active_prompt)
     
     console.print(Panel(Syntax(design_code, "verilog", theme="monokai", line_numbers=True), title="Generated Design"))
 
