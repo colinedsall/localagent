@@ -57,3 +57,19 @@ show_diffs: true       # Show colorized diffs when the agent fixes code
 *   **Be Specific**: "A counter" is vague. "A 4-bit synchronous up-counter with active-high reset and enable" is better. The LLM model will infer the rest, which requires more context. Generally, within the context window of your model, the more specific you are, the better. Using GPT-OSS:20b, most specifications less than 800 words worked perfectly fine over about 3 attemptss.
 *   **Specify Interface**: If you need specific signal names, list them (e.g., "Inputs: clk, rst, in_a; Output: out_b").
 *   **Reset Logic**: Explicitly state "synchronous" or "asynchronous" and "active-high" or "active-low" to ensure the generated testbench matches the design.
+
+## Example Output
+Here is an example of a successfully generated design for the prompt:
+> "A full adder using XOR gates"
+
+### Generated Diagrams
+The agent automatically generates high-level architecture and gate-level synthesized diagrams.
+
+**RTL Architecture (High Level):**
+![RTL Diagram](../examples/full_adder/diagram_rtl.png)
+
+**Gate-Level Logic (Synthesized):**
+![Gate Diagram](../examples/full_adder/diagram_gate.png)
+
+### Unified Report
+A comprehensive PDF report containing source code, testbench, and diagrams is also generated: [View Report](../examples/full_adder/report.pdf)

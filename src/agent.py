@@ -50,14 +50,16 @@ class VerilogAgent:
     def generate_testbench(self, original_verilog: str) -> str:
         """Generates a self-checking testbench for the given design."""
         tb_prompt = (
-            "Write a self-checking Verilog testbench for the following module.\n"
+            "Write a robust, self-checking Verilog testbench for the following module.\n"
             "1. Instantiate the Unit Under Test (UUT).\n"
-            "2. Generate a clock (if sequential).\n"
-            "3. Apply test vectors covering corner cases.\n"
-            "4. Use `$display` and `$error` to report pass/fail.\n"
-            "5. End simulation with `$finish`.\n"
-            "6. DO NOT include the design module code in your response. Only the testbench.\n"
-            "7. The testbench module name must be `tb_<module_name>` or similar.\n\n"
+            "2. Generate a clock (if sequential) with a ~10ns period.\n"
+            "3. Proper Reset: Hold reset active for at least 20ns (2 cycles) at the start.\n"
+            "4. TIMING IS CRITICAL: When checking sequential outputs, ALWAYS wait for a short delay (e.g., `#1` or `@(negedge clk)`) after the active clock edge to avoid race conditions. NEVER check immediately at the same edge active edge.\n"
+            "5. Apply diverse test vectors covering corner cases.\n"
+            "6. Use `$display` and `$error` to report pass/fail status explicitly for each test case.\n"
+            "7. End simulation with `$finish` after all tests.\n"
+            "8. DO NOT include the design module code in your response. Only the testbench.\n"
+            "9. The testbench module name must be `tb_<module_name>` or similar.\n\n"
             f"--- Design Under Test ---\n{original_verilog}"
         )
 
