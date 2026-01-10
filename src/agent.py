@@ -15,7 +15,8 @@ class VerilogAgent:
             "4. Always use non-blocking assignments (`<=`) in sequential logic and blocking (`=`) in combinational logic.\n"
             "5. Do NOT output markdown backticks (```verilog) if possible, or ensure they are easily parseable.\n"
             "6. Output ONLY the code when requested. All code must be contained within a single code block, not multiple code blocks or files.\n"
-            "7. You are to avoid using System Verilog at all times, including making common mistakes such as declaring variables in initial blocks."
+            "7. You are to avoid using System Verilog at all times.\n"
+            "8. You are to avoid making common mistakes such as declaring variables in initial or always blocks, especially in generated sequential logic."
         )
         if extra_instructions:
             self.system_prompt += f"\n\nADDITIONAL INSTRUCTIONS:\n{extra_instructions}"
@@ -56,7 +57,8 @@ class VerilogAgent:
             "4. Use `$display` and `$error` to report pass/fail.\n"
             "5. End simulation with `$finish`.\n"
             "6. DO NOT include the design module code in your response. Only the testbench.\n"
-            "7. The testbench module name must be `tb_<module_name>` or similar.\n\n"
+            "7. If no timescale directive guidance is given, use 1ns/1ps.\n"
+            "8. The testbench module name must be `tb_<module_name>` or similar.\n\n"
             f"--- Design Under Test ---\n{original_verilog}"
         )
 
@@ -73,10 +75,15 @@ class VerilogAgent:
         fix_prompt = (
             f"The following Verilog {file_type} produced compilation errors.\n"
             "Please fix the code. Return ONLY the full corrected code.\n"
+            "If the error is due to a missing timescale directive, use 1ns/1ps.\n"
+            "If the error is due to a logic problem, identify the logic error and fix it.\n"
+            "If the error is due to a static variable initialization or variable declaration, ensure that they are declared outside of any blocks, such as in the top of the module.\n"
+            "If the output log cites requiring SystemVerilog, ensure that both variable declarations and logic are compatible with Verilog 2001, especially variable declarations NOT in blocks.\n"
         )
         
         if is_testbench:
             fix_prompt += "DO NOT include the design module code. Output ONLY the testbench module.\n"
+            fix_prompt += "If the error output shows consistent incorrect logic due to timing or expected outputs, implement changes to the testbench to allow for more lenient timing constraints.\n"  
 
         fix_prompt += (
             f"--- Error Log ---\n{error_log}\n\n"

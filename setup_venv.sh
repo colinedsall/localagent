@@ -14,12 +14,29 @@ if ! command -v python3 &> /dev/null; then
 fi
 echo "Python 3 found."
 
-# 2. Check for Icarus Verilog
-if ! command -v iverilog &> /dev/null; then
-    echo -e "${RED}Warning: iverilog (Icarus Verilog) not found.${NC}"
-    echo "Please install it manually. On Mac: brew install icarus-verilog"
+# 2. Check for System Dependencies (Mac/Brew)
+if command -v brew &> /dev/null; then
+    echo "Homebrew found. Checking dependencies..."
+    
+    deps=("icarus-verilog" "yosys" "graphviz")
+    for dep in "${deps[@]}"; do
+        if ! brew list "$dep" &> /dev/null; then
+            echo -e "${GREEN}Installing $dep...${NC}"
+            brew install "$dep"
+        else
+            echo "$dep is already installed."
+        fi
+    done
 else
-    echo -e "Icarus Verilog found: $(iverilog -V | head -n 1)"
+    # Fallback checks
+    echo -e "${RED}Warning: Homebrew not found. Skipping auto-install of system tools.${NC}"
+    
+    if ! command -v iverilog &> /dev/null; then
+        echo -e "${RED}Error: iverilog not found. Install manually.${NC}"
+    fi
+     if ! command -v yosys &> /dev/null; then
+        echo -e "${RED}Error: yosys not found. Install manually.${NC}"
+    fi
 fi
 
 # 3. Create Virtual Environment
