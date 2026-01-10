@@ -135,16 +135,25 @@ def design(
             if attempt < retries:
                 with console.status(f"[bold orange3]Attempting fix {attempt + 1}...[/bold orange3]"):
                     # Smart Fix Heuristic
-                    # Check if error mentions the testbench file
-                    if "generated_module_tb.v" in output or "testbench.v" in output:
-                        console.print(f"[bold orange3]Fixing Testbench...[/bold orange3]")
-                        new_tb = agent.fix_design(current_tb, output, is_testbench=True)
-                        if show_diffs:
-                            show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
-                        current_tb = new_tb
+                    # 1. Compilation/Syntax Errors
+                    if "syntax error" in output.lower():
+                        if "generated_module_tb.v" in output or "testbench.v" in output:
+                            console.print(f"[bold orange3]Testbench Syntax Error Detected - Fixing Testbench...[/bold orange3]")
+                            new_tb = agent.fix_design(current_tb, output, is_testbench=True)
+                            if show_diffs:
+                                show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
+                            current_tb = new_tb
+                        else:
+                            console.print(f"[bold orange3]Design Syntax Error Detected - Fixing Design...[/bold orange3]")
+                            new_design = agent.fix_design(current_design, output, is_testbench=False)
+                            if show_diffs:
+                                show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
+                            current_design = new_design
+                    
+                    # 2. Simulation/Logic Failures
                     else:
-                        console.print(f"[bold orange3]Fixing Design...[/bold orange3]")
-                        # Pass explicit is_testbench=False
+                        console.print(f"[bold orange3]Simulation Failure Detected - Fixing Design Logic...[/bold orange3]")
+                        # For logic failures, we assume the design is wrong, but we can also pass hints if needed.
                         new_design = agent.fix_design(current_design, output, is_testbench=False)
                         if show_diffs:
                             show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")

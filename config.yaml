@@ -1,7 +1,21 @@
 # Local Verilog Agent Configuration
 
 # Core Settings
-# prompt: "A 4-bit synchronous counter" # Optional: Define prompt here to run without CLI args
+# Prompt defines the default prompt to use when running the agent
+# Instructions provide specific functionality requirements or other guidance to agent
+prompt: "A simple 8-bit register with a synchronous reset" 
+
+instructions: |
+  Use Verilog-2001 standard. All modules must have a 'valid' output signal.
+  
+  Design and implement a digital logic circuit for a register with a synchronous reset.
+  The register should have the following ports:
+  - clk: Clock input
+  - rst: Synchronous reset input
+  - d: Data input
+  - q: Data output
+
+# Global style/constraint instructions
 
 # Ollama Model Settings
 model: "gpt-oss:20b"
