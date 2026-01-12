@@ -1,7 +1,7 @@
 # Local Verilog Agent
 
 ## Overview
-The Local Verilog Agent is an LLM-powered tool that generates, simulates, and validates Verilog hardware designs using your local Ollama LLM and Icarus Verilog installation.
+The Local Verilog Agent is an LLM-powered tool that generates, simulates, and validates Verilog hardware designs. It supports both local execution via **Ollama** and remote inference via **Hugging Face**, allowing for flexible model selection.
 
 ## Setup
 1.  **Prerequisites**:
@@ -28,23 +28,39 @@ python src/main.py "Your Prompt" [OPTIONS]
 ```
 
 **Options:**
-*   `--model <name>`: Specify the Ollama model (e.g., `qwen3:8b`). Overrides `config.yaml`.
+*   `--model <name>`: Specify the model name. Overrides `config.yaml`.
 *   `--max-retries <int>`: Set the maximum self-correction attempts (default: 5).
 *   `--config-file <path>`: Use a custom config file (default: `config.yaml`).
+
+## Agent Workflow
+This agent employs a modular, verify-as-you-go approach to hardware design:
+
+1.  **Planning**: The agent first analyzes your prompt and breaks it down into a hierarchical Implementation Plan, identifying necessary submodules and the top-level design.
+2.  **Submodule Implementation**: It builds the design bottom-up. Each submodule is generated, its testbench is created, and it is simulated/verified in isolation.
+3.  **Context-Aware Integration**: Successfully verified submodules are passed as context to higher-level modules, ensuring that the Top Level module uses correct interfaces.
+4.  **Iterative Self-Correction**: If a simulation fails, the agent analyzes the error logs (compilation or logic errors) and iteratively fixes the code or testbench until it passes verification.
 
 ## Configuration (`config.yaml`)
 The agent is pre-configured via `config.yaml`. You can modify this file to change default behaviors.
 
 ```yaml
 # Core Settings
-prompt: "A 4-bit synchronous counter" # Optional: Define prompt here to run without CLI args
-instructions: "Use Verilog-2001 standard. All modules must have a 'valid' output signal." # Global style/constraint instructions
+prompt: "Design a 8-bit register with active low asynchronous reset"
 
-# Ollama Model Settings
-model: "gpt-oss:20b"  # Default model to use
+# LLM Settings
+llm:
+  provider: "ollama" # Options: "ollama", "huggingface"
+
+  ollama:
+    model: "gpt-oss:20b"
+
+  huggingface:
+    model: "Qwen/Qwen2.5-Coder-32B-Instruct"
+    api_key: "hf_..." 
+    api_url: "https://router.huggingface.co/v1/chat/completions"
 
 # Simulation Settings
-max_retries: 5        # How many times to attempt self-correction
+max_retries: 30        # How many times to attempt self-correction
 workspace_dir: "build" # Temporary directory for simulation files
 
 # Output Settings
@@ -72,4 +88,4 @@ The agent automatically generates high-level architecture and gate-level synthes
 ![Gate Diagram](../examples/full_adder/diagram_gate.png)
 
 ### Unified Report
-A comprehensive PDF report containing source code, testbench, and diagrams is also generated: [View Report](../examples/full_adder/report.pdf)
+A comprehensive PDF report containing diagrams is also generated: [View Report](../examples/full_adder/report.pdf)
