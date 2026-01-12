@@ -15,4 +15,4 @@ source venv/bin/activate
 
 # Run the agent
 # Pass all arguments to the python script
-python3 src/main.py "$@" --model "$DEFAULT_MODEL"
+python3 src/main.py "$@"

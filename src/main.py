@@ -152,6 +152,89 @@ def show_diff(old_code: str, new_code: str, title: str = "Code Changes"):
     if diff_text:
         console.print(Panel(Syntax(diff_text, "diff", theme="monokai"), title=title))
 
+
+def run_simulation_loop(sim, agent, design_code: str, tb_code: str, retries: int, show_diffs: bool, context_code: str = "") -> tuple[bool, str, str]:
+    """Runs the fix loop for a single module (or top level)."""
+    current_design = design_code
+    current_tb = tb_code
+    
+    # When simulating, we must include the context (dependencies) if provided.
+    # We don't fix the context, just the current design.
+    
+    for attempt in range(retries + 1):
+        console.print(f"\n[bold yellow]--- Simulation Attempt {attempt + 1} ---[/bold yellow]")
+        
+        # Combine context (dependencies) + current design for simulation
+        full_source = context_code + "\n" + current_design 
+        success, output = sim.run_simulation(full_source, current_tb, "generated_module")
+        
+        if success:
+            console.print(Panel(output, title="Simulation Result", style="green"))
+            console.print("[bold green]SUCCESS! Module verified.[/bold green]")
+            return True, current_design, current_tb
+        
+        else:
+            console.print(Panel(output, title="Simulation Failed", style="red"))
+            
+
+
+            if attempt < retries:
+                try:
+                    with console.status(f"[bold orange3]Attempting fix {attempt + 1}...[/bold orange3]"):
+                        # 1. Compilation/Syntax Errors
+                        if "COMPILATION ERROR" in output or "syntax error" in output.lower():
+                            if "generated_module_tb.v" in output or "testbench.v" in output:
+                                console.print(f"[bold orange3]Testbench Compilation/Syntax Error - Fixing Testbench...[/bold orange3]")
+                                new_tb = agent.fix_design(current_tb, output, is_testbench=True)
+                                if show_diffs:
+                                    show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
+                                current_tb = new_tb
+                            else:
+                                console.print(f"[bold orange3]Design Compilation/Syntax Error - Fixing Design...[/bold orange3]")
+                                new_design = agent.fix_design(current_design, output, is_testbench=False)
+                                if show_diffs:
+                                    show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
+                                current_design = new_design
+                        
+                        # 2. Simulation/Logic Failures
+                        else:
+                            console.print(f"[bold orange3]Simulation Failure Detected.[/bold orange3]")
+                            if attempt >= 2:
+                                console.print(f"[bold magenta]Persistent Failure - Switching strategy to fix testbench...[/bold magenta]")
+                                new_tb = agent.fix_testbench_logic(current_tb, current_design, output)
+                                if show_diffs:
+                                    show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
+                                current_tb = new_tb
+                            else:
+                                console.print(f"[bold orange3]Fixing Design Logic...[/bold orange3]")
+                                new_design = agent.fix_design(current_design, output, is_testbench=False)
+                                if show_diffs:
+                                    show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
+                                current_design = new_design
+
+                except KeyboardInterrupt:
+                    console.print(f"\n[bold cyan]--- MANUAL INTERRUPT DETECTED ---[/bold cyan]")
+                    console.print("You may manually edit 'build/generated_module.v' or 'build/generated_module_tb.v' now.")
+                    user_choice = typer.prompt("Press [Enter] to reload files & retry, or type 'q' to quit", default="")
+                    if user_choice.lower() == 'q':
+                        raise typer.Exit()
+                    
+                    # Reload files
+                    try:
+                        with open("build/generated_module.v", "r") as f:
+                            current_design = f.read()
+                        with open("build/generated_module_tb.v", "r") as f:
+                            current_tb = f.read()
+                        console.print("[green]Files reloaded. Retrying simulation...[/green]")
+                        continue 
+                    except Exception as e:
+                        console.print(f"[red]Failed to reload files: {e}[/red]")
+            else:
+                 console.print("[bold red]Max retries reached. Validation failed.[/bold red]")
+                 return False, current_design, current_tb
+                 
+    return False, current_design, current_tb
+
 @app.command()
 def design(
     prompt: str = typer.Argument(None, help="Description of the hardware module to build"),
@@ -164,115 +247,115 @@ def design(
     """
     # 1. Load Config
     config = load_config(config_file)
-    
-    # 2. Determine Prompt
-    # CLI arg > Config > Error
     active_prompt = prompt or config.get("prompt")
     
     if not active_prompt:
         console.print("[bold red]Error: No prompt provided.[/bold red]")
-        console.print("Please provide a prompt via CLI argument or 'prompt' field in config.yaml")
         raise typer.Exit(code=1)
 
-    # Check if prompt is a file path
     if Path(active_prompt).is_file():
-        console.print(f"[dim]Loading prompt from file: {active_prompt}[/dim]")
         with open(active_prompt, "r") as f:
             active_prompt = f.read().strip()
 
-    # 3. Override defaults with CLI args or Config
-    model_name = model or config.get("model", "qwen2.5-coder:14b")
-    retries = max_retries if max_retries is not None else config.get("max_retries", 5)
+    # Setup
+    # Priority: CLI > Config['llm'][provider]['model'] > Config['model'] > Default
+    model_name = model
+    if not model_name:
+        if config.get("llm"):
+             prov = config["llm"].get("provider", "ollama")
+             if prov in config["llm"] and isinstance(config["llm"][prov], dict):
+                 model_name = config["llm"][prov].get("model")
+             else:
+                 model_name = config["llm"].get("model")
+        
+    if not model_name:
+         # Legacy config check: Ignore gpt-oss:20b
+         candidate = config.get("model")
+         if candidate and candidate != "gpt-oss:20b":
+             model_name = candidate
+         else:
+             model_name = "qwen2.5-coder:14b"
+    retries = max_retries if max_retries is not None else config.get("max_retries", 15)
     designs_dir = config.get("designs_dir", "designs")
     show_diffs = config.get("show_diffs", True)
     instructions = config.get("instructions", "")
 
-    agent = VerilogAgent(model_name=model_name, extra_instructions=instructions)
+    agent = VerilogAgent(model_name=model_name, extra_instructions=instructions, config=config)
     sim = VerilogSimulator(work_dir=config.get("workspace_dir", "build"))
     
     console.print(Panel(f"[bold blue]Goal:[/bold blue] {active_prompt}\n[dim]Model: {model_name}[/dim]", title="Verilog Agent"))
 
-    if instructions:
-        console.print(Panel(f"[dim]{instructions}[/dim]", title="Global Instructions"))
-
-    # 4. Generate Design
-    with console.status("[bold green]Generating Verilog Design...[/bold green]"):
-        design_code = agent.generate_design(active_prompt)
+    # STEP 1: PLAN
+    with console.status("[bold cyan]Analyzing Architecture & Planning submodules...[/bold cyan]"):
+        plan = agent.generate_plan(active_prompt)
     
-    console.print(Panel(Syntax(design_code, "verilog", theme="monokai", line_numbers=True), title="Generated Design"))
+    console.print(f"[bold cyan]Implementation Plan:[/bold cyan]")
+    for item in plan:
+        console.print(f"- [bold]{item['name']}[/bold] ({item['type']}): {item['description']}")
 
-    # 4. Generate Testbench
-    with console.status("[bold green]Generating Testbench...[/bold green]"):
-        tb_code = agent.generate_testbench(design_code)
+    # STEP 2: BUILD SUBMODULES
+    verified_modules_code = ""
     
-    console.print(Panel(Syntax(tb_code, "verilog", theme="monokai", line_numbers=True), title="Generated Testbench"))
-
-    # 5. Simulation Loop
-    current_design = design_code
-    current_tb = tb_code
+    # Sort plan so submodules come first
+    submodules = [p for p in plan if p['type'] != 'top']
+    top_module = next((p for p in plan if p['type'] == 'top'), None)
     
-    for attempt in range(retries + 1):
-        console.print(f"\n[bold yellow]--- Simulation Attempt {attempt + 1} ---[/bold yellow]")
+    if not top_module and submodules:
+         # Fallback if AI didn't label top correct
+         top_module = submodules[-1]
+         submodules = submodules[:-1]
+    
+    if not top_module and not submodules:
+        # Fallback if plan failed entirely
+        top_module = {'name': 'design', 'description': active_prompt}
+    
+    # Build Submodules
+    for module in submodules:
+        console.print(Panel(f"Building Submodule: {module['name']}", style="blue"))
         
-        success, output = sim.run_simulation(current_design, current_tb, "generated_module")
+        # Generator
+        with console.status(f"Generating {module['name']}..."):
+            # Submodules generally don't need context of other submodules unless specified, 
+            # but passing strictly previously verified code helps if they are interdependent.
+            sub_code = agent.generate_design(module['description'], context=verified_modules_code)
+            sub_tb = agent.generate_testbench(sub_code)
+        
+        # Verify
+        success, fixed_code, fixed_tb = run_simulation_loop(sim, agent, sub_code, sub_tb, retries, show_diffs, context_code=verified_modules_code)
         
         if success:
-            console.print(Panel(output, title="Simulation Result", style="green"))
-            console.print("[bold green]SUCCESS! Design verified.[/bold green]")
+            verified_modules_code += f"\n// --- {module['name']} ---\n{fixed_code}\n"
             
-            if config.get("save_on_success", True):
-                # Use active_prompt for the directory name, truncated and sanitized
-                # active_prompt might be a file content, so we should be careful.
-                # If prompt arg was None, we used config prompt.
-                
-                # If active_prompt implies a file path, we might want to use the filename?
-                # But active_prompt was overwritten with content in step 2.
-                # Let's just use a safe string or the first few chars of the content.
-                
-                name_hint = active_prompt[:20] if active_prompt else "generated_design"
-                save_design(name_hint, current_design, current_tb, designs_dir, prompt=active_prompt)
-            break
+            # SAVE SUBMODULE TO DISK
+            sub_file = config.get("workspace_dir", "build") + f"/{module['name']}.v"
+            with open(sub_file, "w") as f:
+                f.write(fixed_code)
+            console.print(f"[dim]Saved submodule to {sub_file}[/dim]")
+            
         else:
-            console.print(Panel(output, title="Simulation Failed", style="red"))
-            
-            if attempt < retries:
-                with console.status(f"[bold orange3]Attempting fix {attempt + 1}...[/bold orange3]"):
-                    # Smart Fix Heuristic
-                    # 1. Compilation/Syntax Errors
-                    if "syntax error" in output.lower():
-                        if "generated_module_tb.v" in output or "testbench.v" in output:
-                            console.print(f"[bold orange3]Testbench Syntax Error Detected - Fixing Testbench...[/bold orange3]")
-                            new_tb = agent.fix_design(current_tb, output, is_testbench=True)
-                            if show_diffs:
-                                show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
-                            current_tb = new_tb
-                        else:
-                            console.print(f"[bold orange3]Design Syntax Error Detected - Fixing Design...[/bold orange3]")
-                            new_design = agent.fix_design(current_design, output, is_testbench=False)
-                            if show_diffs:
-                                show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
-                            current_design = new_design
-                    
-                    # 2. Simulation/Logic Failures
-                    else:
-                        console.print(f"[bold orange3]Simulation Failure Detected.[/bold orange3]")
-                        
-                        # Heuristic: If we've failed > 2 times on logic errors, 
-                        # it might be the testbench that is wrong/too strict.
-                        if attempt >= 2:
-                            console.print(f"[bold magenta]Persistent Failure (Attempt {attempt+1}) - Switching strategy to fix testbench...[/bold magenta]")
-                            new_tb = agent.fix_design(current_tb, output, is_testbench=True)
-                            if show_diffs:
-                                show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
-                            current_tb = new_tb
-                        else:
-                            console.print(f"[bold orange3]Fixing Design Logic...[/bold orange3]")
-                            new_design = agent.fix_design(current_design, output, is_testbench=False)
-                            if show_diffs:
-                                show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
-                            current_design = new_design
-            else:
-                 console.print("[bold red]Max retries reached. Validation failed.[/bold red]")
+            console.print(f"[bold red]Submodule {module['name']} Failed! Continuing carefully...[/bold red]")
+            # We add it anyway, or else Top will fail definition. 
+            # Ideally we might stop here, but let's try to proceed.
+            verified_modules_code += f"\n{fixed_code}\n"
+
+    # STEP 3: BUILD TOP LEVEL
+    console.print(Panel(f"Building Top Level: {top_module['name'] or 'Top'}", style="bold blue"))
+    
+    with console.status("Generating Top Level Module..."):
+        # Top level needs ALL previous modules as context
+        top_code = agent.generate_design(active_prompt, context=verified_modules_code)
+        top_tb = agent.generate_testbench(top_code)
+    
+    # Verify Top Level
+    # Note: We pass verified_modules_code as context so simulation includes them
+    success, fixed_top, fixed_top_tb = run_simulation_loop(sim, agent, top_code, top_tb, retries, show_diffs, context_code=verified_modules_code)
+    
+    # Save Final Artifact
+    full_design = verified_modules_code + "\n" + fixed_top
+    
+    if success and config.get("save_on_success", True):
+        name_hint = active_prompt[:20] if active_prompt else "generated_design"
+        save_design(name_hint, full_design, fixed_top_tb, designs_dir, prompt=active_prompt)
 
 if __name__ == "__main__":
     app()

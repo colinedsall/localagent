@@ -3,25 +3,26 @@
 # Core Settings
 # Prompt defines the default prompt to use when running the agent
 # Instructions provide specific functionality requirements or other guidance to agent
-prompt: "A simple 8-bit register with a synchronous reset" 
+prompt: "Design a 8-bit register with active low asynchronous reset" 
 
 instructions: |
-  Use Verilog-2001 standard. All modules must have a 'valid' output signal.
-  
-  Design and implement a digital logic circuit for a register with a synchronous reset.
-  The register should have the following ports:
-  - clk: Clock input
-  - rst: Synchronous reset input
-  - d: Data input
-  - q: Data output
+  Use Verilog-2001 standard.
+ 
+# LLM Settings
+llm:
+  # Change this to "ollama" or "huggingface" to switch providers
+  provider: "huggingface" 
 
-# Global style/constraint instructions
+  ollama:
+    model: "gpt-oss:20b"
 
-# Ollama Model Settings
-model: "gpt-oss:20b"
+  huggingface:
+    model: "Qwen/Qwen2.5-Coder-32B-Instruct"
+    api_key: "" 
+    api_url: "https://router.huggingface.co/v1/chat/completions" # Router Endpoint
 
 # Simulation Settings
-max_retries: 5
+max_retries: 30
 workspace_dir: "build"
 
 # Output Settings

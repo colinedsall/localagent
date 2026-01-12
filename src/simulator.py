@@ -32,7 +32,10 @@ class VerilogSimulator:
 
         # 2. Run simulation with vvp
         sim_cmd = ["vvp", str(sim_out)]
-        sim_result = subprocess.run(sim_cmd, capture_output=True, text=True)
+        try:
+            sim_result = subprocess.run(sim_cmd, capture_output=True, text=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            return False, "TIMEOUT ERROR: Simulation exceeded 10 seconds. Likely infinite loop (missing $finish) or clock logic error."
 
         if sim_result.returncode != 0:
             return False, f"RUNTIME ERROR:\n{sim_result.stderr}\nSTDOUT:\n{sim_result.stdout}"
