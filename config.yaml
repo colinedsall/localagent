@@ -3,22 +3,25 @@
 # Core Settings
 # Prompt defines the default prompt to use when running the agent
 # Instructions provide specific functionality requirements or other guidance to agent
-prompt: "Design a 8-bit register with active low asynchronous reset" 
+prompt: "Design a classic T (toggle) flip-flop in Verilog-2001." 
 
 instructions: |
-  Use Verilog-2001 standard.
- 
+  Use Verilog-2001 standard. The use of System Verilog methods is strictly prohibited.
+
 # LLM Settings
 llm:
   # Change this to "ollama" or "huggingface" to switch providers
-  provider: "huggingface" 
+  provider: "ollama" 
 
   ollama:
+    # Note: some models do not support variants
     model: "gpt-oss:20b"
+    variant: "high" # Options: low, medium, high (appends -variant to model name)
+    api_url: "http://localhost:11434"
 
   huggingface:
     model: "Qwen/Qwen2.5-Coder-32B-Instruct"
-    api_key: "" 
+    api_key: "hf_.... ENTER KEY HERE" 
     api_url: "https://router.huggingface.co/v1/chat/completions" # Router Endpoint
 
 # Simulation Settings
