@@ -7,6 +7,14 @@ class VerilogSimulator:
     def __init__(self, work_dir: str = "workspace"):
         self.work_dir = Path(work_dir)
         self.work_dir.mkdir(exist_ok=True)
+        
+    def clean_workspace(self):
+        """Removes all files in the workspace directory."""
+        if self.work_dir.exists():
+            for child in self.work_dir.iterdir():
+                if child.is_file():
+                    child.unlink()
+
 
     def run_simulation(self, design_code: str, tb_code: str, module_name: str) -> Tuple[bool, str]:
         """

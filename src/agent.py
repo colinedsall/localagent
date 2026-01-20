@@ -116,7 +116,12 @@ class VerilogAgent:
                 p_cfg = llm_cfg[provider]
                 # Use CLI model if given, else config model, else default
                 if not model:
-                     model = p_cfg.get("model", "qwen2.5-coder:14b")
+                     base_model = p_cfg.get("model", "qwen2.5-coder:14b")
+                     variant = p_cfg.get("variant", "")
+                     if variant:
+                         model = f"{base_model}-{variant}"
+                     else:
+                         model = base_model
                 api_key = p_cfg.get("api_key", "")
                 api_url = p_cfg.get("api_url", "")
             else:
@@ -196,11 +201,19 @@ class VerilogAgent:
         response = self.backend.generate(self.system_prompt, full_prompt)
         return self._clean_response(response)
 
+    def _extract_module_name(self, verilog_code: str) -> str:
+        """Extracts the module name from Verilog code."""
+        match = re.search(r"^\s*module\s+(\w+)", verilog_code, re.MULTILINE)
+        if match:
+            return match.group(1)
+        return "generated_module" # Fallback
+
     def generate_testbench(self, original_verilog: str) -> str:
         """Generates a self-checking testbench for the given design."""
+        module_name = self._extract_module_name(original_verilog)
         tb_prompt = (
             "Write a robust, self-checking Verilog testbench for the following module.\n"
-            "1. Instantiate the Unit Under Test (UUT).\n"
+            f"1. Instantiate the Unit Under Test (UUT) named `{module_name}`.\n"
             "2. Generate a clock (if sequential) with a ~10ns period.\n"
             "3. Proper Reset: Hold reset active for at least 20ns (2 cycles) at the start.\n"
             "4. TIMING IS CRITICAL: When checking sequential outputs, ALWAYS wait for a short delay (e.g., `#1` or `@(negedge clk)`) after the active clock edge to avoid race conditions. NEVER check immediately at the same edge active edge.\n"
@@ -229,6 +242,7 @@ class VerilogAgent:
             "If the error is due to a logic problem, identify the logic error and fix it.\n"
             "If the error is due to a static variable initialization or variable declaration, ensure that they are declared outside of any blocks, such as in the top of the module.\n"
             "If the output log cites requiring SystemVerilog, ensure that both variable declarations and logic are compatible with Verilog 2001, especially variable declarations NOT in blocks.\n"
+            "CRITICAL: You MUST modify the code to fix the error. Do NOT return the same code.\n"
         )
         
         if is_testbench:
@@ -269,7 +283,8 @@ class VerilogAgent:
 
     def fix_testbench_logic(self, testbench_code: str, design_code: str, error_log: str) -> str:
         """Specialized fixer for Testbench logic errors using a Verification Expert persona."""
-        
+        module_name = self._extract_module_name(design_code)
+
         verification_system_prompt = (
             "You are an expert Verification Engineer. Your goal is to debug and fix a Verilog Testbench.\n"
             "You are given:\n"
@@ -277,13 +292,15 @@ class VerilogAgent:
             "2. The Testbench code (which is failing).\n"
             "3. The Simulation Output/Error Log.\n"
             "Your task is to analyze the failure and FIX the testbench to correctly verify the design.\n"
+            f"CRITICAL: Ensure that the testbench instantiates the module named `{module_name}` correctly.\n"
             "Common Testbench Issues to look for:\n"
             "- Timing Mismatches: Checking outputs too early (race conditions). Use `#1` delay or check on `negedge clk`.\n"
             "- Reset Issues: Not holding reset long enough or checking values during reset.\n"
             "- Latency: The design may be pipelined (taking N cycles), but the testbench expects 0-cycle response.\n"
             "- Protocol: Misunderstanding valid/ready signals.\n"
             "- Golden Model Mismatch: Avoid hardcoding expected values. Instead, implement a behavioral model (Golden Model) in the testbench to CALCULATE the expected output on the fly based on inputs.\n"
-            "Output ONLY the fixed Testbench code."
+            "Output ONLY the fixed Testbench code.\n"
+            "CRITICAL: You MUST modify the code to fix the verification failure. Do NOT return the same code."
         )
 
         user_prompt = (

@@ -85,7 +85,7 @@ def generate_diagram(verilog_file: Path, output_dir: Path) -> list:
         rtl_dot = rtl_prefix.with_suffix(".dot")
         rtl_png = rtl_prefix.with_suffix(".png")
         if rtl_dot.exists():
-            subprocess.run(["dot", "-Tpng", str(rtl_dot), "-o", str(rtl_png)], check=True)
+            subprocess.run(["dot", "-Tpng", str(rtl_dot), "-o", str(rtl_png)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             images.append((rtl_png, "RTL Architecture (High Level)"))
             rtl_dot.unlink()
 
@@ -102,7 +102,7 @@ def generate_diagram(verilog_file: Path, output_dir: Path) -> list:
         gate_dot = gate_prefix.with_suffix(".dot")
         gate_png = gate_prefix.with_suffix(".png")
         if gate_dot.exists():
-            subprocess.run(["dot", "-Tpng", str(gate_dot), "-o", str(gate_png)], check=True)
+            subprocess.run(["dot", "-Tpng", str(gate_dot), "-o", str(gate_png)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             images.append((gate_png, "Synthesized Logic (Gate Level)"))
             gate_dot.unlink()
             
@@ -131,10 +131,10 @@ def save_design(name: str, design_code: str, tb_code: str, output_dir: str, prom
     images = generate_diagram(design_file, save_path)
     
     # Generate Report
+    # Generate Report
     metadata = {
-        "Prompt": prompt[:500] + "..." if len(prompt) > 500 else prompt,
+        "Prompt": " ".join(prompt.split()[:100]) + ("..." if len(prompt.split()) > 100 else ""),
         "Timestamp": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-        "Design Name": name,
         "Status": "Verified"
     }
     generate_report(save_path, metadata, images)
@@ -157,6 +157,7 @@ def run_simulation_loop(sim, agent, design_code: str, tb_code: str, retries: int
     """Runs the fix loop for a single module (or top level)."""
     current_design = design_code
     current_tb = tb_code
+    last_action_was_manual = False
     
     # When simulating, we must include the context (dependencies) if provided.
     # We don't fix the context, just the current design.
@@ -177,58 +178,108 @@ def run_simulation_loop(sim, agent, design_code: str, tb_code: str, retries: int
             console.print(Panel(output, title="Simulation Failed", style="red"))
             
 
+        if last_action_was_manual:
+            console.print(f"[bold yellow]Manual fix failed validation.[/bold yellow]")
+            user_choice = typer.prompt("Press [Enter] to edit again & retry, type 'q' to quit, or type 'auto' to resume agent", default="")
+            
+            if user_choice.lower() == 'q':
+                raise typer.Exit()
 
-            if attempt < retries:
+            if user_choice.lower() != 'auto':
+                # User wants to try again manually
                 try:
-                    with console.status(f"[bold orange3]Attempting fix {attempt + 1}...[/bold orange3]"):
-                        # 1. Compilation/Syntax Errors
-                        if "COMPILATION ERROR" in output or "syntax error" in output.lower():
-                            if "generated_module_tb.v" in output or "testbench.v" in output:
-                                console.print(f"[bold orange3]Testbench Compilation/Syntax Error - Fixing Testbench...[/bold orange3]")
-                                new_tb = agent.fix_design(current_tb, output, is_testbench=True)
-                                if show_diffs:
-                                    show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
-                                current_tb = new_tb
-                            else:
-                                console.print(f"[bold orange3]Design Compilation/Syntax Error - Fixing Design...[/bold orange3]")
-                                new_design = agent.fix_design(current_design, output, is_testbench=False)
-                                if show_diffs:
-                                    show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
-                                current_design = new_design
-                        
-                        # 2. Simulation/Logic Failures
-                        else:
-                            console.print(f"[bold orange3]Simulation Failure Detected.[/bold orange3]")
-                            if attempt >= 2:
-                                console.print(f"[bold magenta]Persistent Failure - Switching strategy to fix testbench...[/bold magenta]")
-                                new_tb = agent.fix_testbench_logic(current_tb, current_design, output)
-                                if show_diffs:
-                                    show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
-                                current_tb = new_tb
-                            else:
-                                console.print(f"[bold orange3]Fixing Design Logic...[/bold orange3]")
-                                new_design = agent.fix_design(current_design, output, is_testbench=False)
-                                if show_diffs:
-                                    show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
-                                current_design = new_design
-
-                except KeyboardInterrupt:
-                    console.print(f"\n[bold cyan]--- MANUAL INTERRUPT DETECTED ---[/bold cyan]")
-                    console.print("You may manually edit 'build/generated_module.v' or 'build/generated_module_tb.v' now.")
-                    user_choice = typer.prompt("Press [Enter] to reload files & retry, or type 'q' to quit", default="")
-                    if user_choice.lower() == 'q':
-                        raise typer.Exit()
+                    design_path = sim.work_dir / "generated_module.v"
+                    tb_path = sim.work_dir / "generated_module_tb.v"
                     
-                    # Reload files
-                    try:
-                        with open("build/generated_module.v", "r") as f:
-                            current_design = f.read()
-                        with open("build/generated_module_tb.v", "r") as f:
-                            current_tb = f.read()
-                        console.print("[green]Files reloaded. Retrying simulation...[/green]")
-                        continue 
-                    except Exception as e:
-                        console.print(f"[red]Failed to reload files: {e}[/red]")
+                    with open(design_path, "r") as f:
+                        full_content = f.read()
+                    
+                    # Strip context if present to avoid duplication
+                    if context_code and full_content.strip().startswith(context_code.strip()):
+                         current_design = full_content.replace(context_code, "", 1).strip()
+                    else:
+                         current_design = full_content
+
+                    with open(tb_path, "r") as f:
+                        current_tb = f.read()
+                    console.print(f"[green]Files reloaded ({len(current_design)} bytes). Retrying simulation...[/green]")
+                    continue 
+                except Exception as e:
+                    console.print(f"[red]Failed to reload files: {e}[/red]")
+            
+            # If user typed 'auto', clear the flag and let the agent fix it
+            last_action_was_manual = False
+
+        # If we are here, logic failed, so we try auto-fix if not manually paused
+        try:
+            with console.status(f"[bold orange3]Attempting fix {attempt + 1}...[/bold orange3]"):
+                # 1. Compilation/Syntax Errors
+                if "COMPILATION ERROR" in output or "syntax error" in output.lower():
+                    if "generated_module_tb.v" in output or "testbench.v" in output:
+                        console.print(f"[bold orange3]Testbench Compilation/Syntax Error - Fixing Testbench...[/bold orange3]")
+                        new_tb = agent.fix_design(current_tb, output, is_testbench=True)
+                        if new_tb == current_tb:
+                            console.print("[bold red]Warning: Agent returned identical Testbench code.[/bold red]")
+                        if show_diffs:
+                            show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
+                        current_tb = new_tb
+                    else:
+                        console.print(f"[bold orange3]Design Compilation/Syntax Error - Fixing Design...[/bold orange3]")
+                        new_design = agent.fix_design(current_design, output, is_testbench=False)
+                        if new_design == current_design:
+                            console.print("[bold red]Warning: Agent returned identical Design code.[/bold red]")
+                        if show_diffs:
+                            show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
+                        current_design = new_design
+                
+                # 2. Simulation/Logic Failures
+                else:
+                    console.print(f"[bold orange3]Simulation Failure Detected.[/bold orange3]")
+                    if attempt >= 2:
+                        console.print(f"[bold magenta]Persistent Failure - Switching strategy to fix testbench...[/bold magenta]")
+                        new_tb = agent.fix_testbench_logic(current_tb, current_design, output)
+                        if new_tb == current_tb:
+                            console.print("[bold red]Warning: Agent returned identical Testbench code.[/bold red]")
+                        if show_diffs:
+                            show_diff(current_tb, new_tb, title=f"Testbench Fixes for Attempt {attempt + 1}")
+                        current_tb = new_tb
+                    else:
+                        console.print(f"[bold orange3]Fixing Design Logic...[/bold orange3]")
+                        new_design = agent.fix_design(current_design, output, is_testbench=False)
+                        if new_design == current_design:
+                            console.print("[bold red]Warning: Agent returned identical Design code.[/bold red]")
+                        if show_diffs:
+                            show_diff(current_design, new_design, title=f"Design Fixes for Attempt {attempt + 1}")
+                        current_design = new_design
+
+        except KeyboardInterrupt:
+            console.print(f"\n[bold cyan]--- MANUAL INTERRUPT DETECTED ---[/bold cyan]")
+            console.print("You may manually edit 'build/generated_module.v' or 'build/generated_module_tb.v' now.")
+            user_choice = typer.prompt("Press [Enter] to reload files & retry, or type 'q' to quit", default="")
+            if user_choice.lower() == 'q':
+                raise typer.Exit()
+            
+            # Reload files
+            try:
+                design_path = sim.work_dir / "generated_module.v"
+                tb_path = sim.work_dir / "generated_module_tb.v"
+
+                with open(design_path, "r") as f:
+                    full_content = f.read()
+                
+                # Strip context if present to avoid duplication
+                if context_code and full_content.strip().startswith(context_code.strip()):
+                        current_design = full_content.replace(context_code, "", 1).strip()
+                else:
+                        current_design = full_content
+
+                with open(tb_path, "r") as f:
+                    current_tb = f.read()
+                console.print(f"[green]Files reloaded ({len(current_design)} bytes). Retrying simulation...[/green]")
+                last_action_was_manual = True
+                continue 
+            except Exception as e:
+                console.print(f"[red]Failed to reload files: {e}[/red]")
             else:
                  console.print("[bold red]Max retries reached. Validation failed.[/bold red]")
                  return False, current_design, current_tb
@@ -282,8 +333,11 @@ def design(
 
     agent = VerilogAgent(model_name=model_name, extra_instructions=instructions, config=config)
     sim = VerilogSimulator(work_dir=config.get("workspace_dir", "build"))
+    sim.clean_workspace() # Cleanup previous runs
+    console.print(f"[dim]Cleaned build workspace.[/dim]")
     
-    console.print(Panel(f"[bold blue]Goal:[/bold blue] {active_prompt}\n[dim]Model: {model_name}[/dim]", title="Verilog Agent"))
+    provider = config.get("llm", {}).get("provider", "unknown")
+    console.print(Panel(f"[bold blue]Goal:[/bold blue] {active_prompt}\n[dim]Model: {model_name}[/dim]\n[dim]Provider: {provider}[/dim]", title="Verilog Agent"))
 
     # STEP 1: PLAN
     with console.status("[bold cyan]Analyzing Architecture & Planning submodules...[/bold cyan]"):
