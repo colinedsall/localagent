@@ -116,12 +116,7 @@ class VerilogAgent:
                 p_cfg = llm_cfg[provider]
                 # Use CLI model if given, else config model, else default
                 if not model:
-                     base_model = p_cfg.get("model", "qwen2.5-coder:14b")
-                     variant = p_cfg.get("variant", "")
-                     if variant:
-                         model = f"{base_model}-{variant}"
-                     else:
-                         model = base_model
+                     model = p_cfg.get("model", "qwen2.5-coder:14b")
                 api_key = p_cfg.get("api_key", "")
                 api_url = p_cfg.get("api_url", "")
             else:

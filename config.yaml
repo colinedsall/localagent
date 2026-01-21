@@ -14,9 +14,7 @@ llm:
   provider: "ollama" 
 
   ollama:
-    # Note: some models do not support variants
     model: "gpt-oss:20b"
-    variant: "high" # Options: low, medium, high (appends -variant to model name)
     api_url: "http://localhost:11434"
 
   huggingface:
